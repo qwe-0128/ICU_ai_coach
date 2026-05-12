@@ -73,7 +73,7 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
     diagnostics.push(`date_range=${startDate}~${today}`)
 
     // ============ 3. Fetch & Preprocess Activities ============
-    const rawActivities = await fetchActivities(athleteId, startDate, today)
+    const rawActivities = await fetchActivities(athleteId, startDate, today, diagnostics)
     diagnostics.push(`rawActivities_count=${rawActivities.length}`)
     
     if (rawActivities.length > 0) {

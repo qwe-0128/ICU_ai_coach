@@ -82,16 +82,47 @@ async function safeFetchJson(url: string, label: string): Promise<any> {
 export async function fetchActivities(
   athleteId: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  diagnostics?: string[]
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any[]> {
   const baseUrl = `https://intervals.icu/api/v1/athlete/${athleteId}/activities`
   const params = new URLSearchParams({
     oldest: startDate,
     newest: endDate,
-    include: 'tss,hr_zones,power_zones,streams',
   })
-  return safeFetchJson(`${baseUrl}?${params}`, 'activities')
+  const fullUrl = `${baseUrl}?${params}`
+  
+  diag(diagnostics, `fetchActivities_url=${fullUrl.replace(athleteId, 'ATHLETE_ID')}`)
+  
+  const headers = getIntervalIcuHeaders()
+  // Don't use safeFetchJson — capture raw response for diagnostics
+  const resp = await fetch(fullUrl, { headers })
+  const text = await resp.text()
+  diag(diagnostics, `fetchActivities_status=${resp.status}`)
+  diag(diagnostics, `fetchActivities_contentType=${resp.headers.get('content-type')}`)
+  diag(diagnostics, `fetchActivities_bodyLen=${text.length}`)
+  diag(diagnostics, `fetchActivities_bodyPrefix=${text.substring(0, 200).replace(/\n/g, ' ')}`)
+  
+  if (!resp.ok) {
+    throw new Error(
+      `Interval.icu activities 返回 HTTP ${resp.status}. ` +
+      `开头: ${text.substring(0, 150)}`
+    )
+  }
+  
+  const trimmed = text.trim()
+  if (!trimmed || (!trimmed.startsWith('[') && !trimmed.startsWith('{'))) {
+    throw new Error(
+      `Interval.icu activities 返回 HTML 而非 JSON (HTTP ${resp.status}). ` +
+      `开头: ${trimmed.substring(0, 150)}`
+    )
+  }
+  return JSON.parse(trimmed)
+}
+
+function diag(arr: string[] | undefined, msg: string) {
+  if (arr) arr.push(msg)
 }
 
 export async function fetchWellness(
