@@ -29,15 +29,36 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
       }
 
       const pinHash = hashPin(pin)
-      
-      // Upsert PIN session
-      const { error } = await sb.from('pin_sessions').upsert({
-        athlete_id: athleteId,
-        pin_hash: pinHash,
-        attempts: 0,
-        locked_until: null,
-        last_access: new Date().toISOString(),
-      }, { onConflict: 'athlete_id' })
+
+      // Check existing session first
+      const { data: existing } = await sb
+        .from('pin_sessions')
+        .select('id')
+        .eq('athlete_id', athleteId)
+        .maybeSingle()
+
+      let error: { message: string } | null = null
+
+      if (existing) {
+        // Update existing
+        const res = await sb.from('pin_sessions').update({
+          pin_hash: pinHash,
+          attempts: 0,
+          locked_until: null,
+          last_access: new Date().toISOString(),
+        }).eq('athlete_id', athleteId)
+        error = res.error
+      } else {
+        // Insert new
+        const res = await sb.from('pin_sessions').insert({
+          athlete_id: athleteId,
+          pin_hash: pinHash,
+          attempts: 0,
+          locked_until: null,
+          last_access: new Date().toISOString(),
+        })
+        error = res.error
+      }
 
       if (error) throw error
 
