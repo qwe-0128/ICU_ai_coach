@@ -1,0 +1,142 @@
+// ============ PIN Authentication Netlify Function ============
+import type { Handler, HandlerEvent, HandlerResponse } from '@netlify/functions'
+import { getSupabase, getEnv, corsHeaders } from './utils/auth'
+import { createHash, randomBytes } from 'crypto'
+
+function hashPin(pin: string): string {
+  return createHash('sha256').update(pin + getEnv('PIN_SALT')).digest('hex')
+}
+
+const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> => {
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 204, headers: corsHeaders(), body: '' }
+  }
+
+  try {
+    const body = JSON.parse(event.body || '{}')
+    const { action, pin } = body
+
+    const sb = getSupabase()
+    const athleteId = getEnv('ATHLETE_ID')
+
+    if (action === 'set') {
+      if (!pin || pin.length < 4 || pin.length > 8) {
+        return {
+          statusCode: 400,
+          headers: corsHeaders(),
+          body: JSON.stringify({ error: 'PIN must be 4-8 digits' }),
+        }
+      }
+
+      const pinHash = hashPin(pin)
+      
+      // Upsert PIN session
+      const { error } = await sb.from('pin_sessions').upsert({
+        athlete_id: athleteId,
+        pin_hash: pinHash,
+        attempts: 0,
+        locked_until: null,
+        last_access: new Date().toISOString(),
+      }, { onConflict: 'athlete_id' })
+
+      if (error) throw error
+
+      return {
+        statusCode: 200,
+        headers: corsHeaders(),
+        body: JSON.stringify({ success: true }),
+      }
+    }
+
+    if (action === 'verify') {
+      if (!pin) {
+        return {
+          statusCode: 400,
+          headers: corsHeaders(),
+          body: JSON.stringify({ error: 'PIN required' }),
+        }
+      }
+
+      // Get current session
+      const { data: session, error: fetchErr } = await sb
+        .from('pin_sessions')
+        .select('*')
+        .eq('athlete_id', athleteId)
+        .single()
+
+      if (fetchErr || !session) {
+        // First time - accept any PIN
+        return {
+          statusCode: 200,
+          headers: corsHeaders(),
+          body: JSON.stringify({ success: true, first_time: true }),
+        }
+      }
+
+      // Check if locked
+      if (session.locked_until && new Date(session.locked_until) > new Date()) {
+        const remaining = Math.ceil((new Date(session.locked_until).getTime() - Date.now()) / 60000)
+        return {
+          statusCode: 429,
+          headers: corsHeaders(),
+          body: JSON.stringify({ error: `Account locked. Try again in ${remaining} minutes.` }),
+        }
+      }
+
+      const pinHash = hashPin(pin)
+      if (pinHash === session.pin_hash) {
+        // Reset attempts on success
+        await sb.from('pin_sessions').update({
+          attempts: 0,
+          locked_until: null,
+          last_access: new Date().toISOString(),
+        }).eq('athlete_id', athleteId)
+
+        // Return a session token (re-use pin_hash as token)
+        return {
+          statusCode: 200,
+          headers: corsHeaders(),
+          body: JSON.stringify({ success: true, token: session.pin_hash }),
+        }
+      }
+
+      // Failed attempt
+      const newAttempts = (session.attempts || 0) + 1
+      let lockedUntil: string | null = null
+
+      if (newAttempts >= 5) {
+        lockedUntil = new Date(Date.now() + 15 * 60 * 1000).toISOString()
+      }
+
+      await sb.from('pin_sessions').update({
+        attempts: newAttempts,
+        locked_until: lockedUntil,
+      }).eq('athlete_id', athleteId)
+
+      return {
+        statusCode: 401,
+        headers: corsHeaders(),
+        body: JSON.stringify({
+          error: `Invalid PIN. ${5 - newAttempts} attempts remaining.`,
+          attempts_left: 5 - newAttempts,
+        }),
+      }
+    }
+
+    return {
+      statusCode: 400,
+      headers: corsHeaders(),
+      body: JSON.stringify({ error: 'Invalid action' }),
+    }
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Internal error'
+    console.error('PIN auth error:', message)
+    return {
+      statusCode: 500,
+      headers: corsHeaders(),
+      body: JSON.stringify({ error: message }),
+    }
+  }
+}
+
+export { handler }
