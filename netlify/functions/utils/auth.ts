@@ -1,5 +1,6 @@
 // ============ Shared Auth Utilities for Netlify Functions ============
 import { createClient } from '@supabase/supabase-js'
+import ws from 'ws'
 
 export function getEnv(key: string): string {
   const val = process.env[key]
@@ -8,7 +9,11 @@ export function getEnv(key: string): string {
 }
 
 export function getSupabase() {
-  return createClient(getEnv('VITE_SUPABASE_URL'), getEnv('SUPABASE_SERVICE_ROLE_KEY'))
+  return createClient(getEnv('VITE_SUPABASE_URL'), getEnv('SUPABASE_SERVICE_ROLE_KEY'), {
+    auth: { persistSession: false },
+    global: { headers: { 'Content-Type': 'application/json' } },
+    realtime: { transport: ws as any },
+  })
 }
 
 export async function verifyPinToken(token: string): Promise<string> {
