@@ -33,8 +33,8 @@ export async function verifyPinToken(token: string): Promise<string> {
 
 export function getIntervalIcuHeaders(): Record<string, string> {
   const apiKey = getEnv('INTERVAL_ICU_API_KEY')
-  // interval.icu uses HTTP Basic Auth: username = API Key, password = empty
-  const basic = Buffer.from(`${apiKey}:`).toString('base64')
+  // intervals.icu uses HTTP Basic Auth: username = "API_KEY" (literal), password = your actual API key
+  const basic = Buffer.from(`API_KEY:${apiKey}`).toString('base64')
   return {
     'Authorization': `Basic ${basic}`,
     'Content-Type': 'application/json',
