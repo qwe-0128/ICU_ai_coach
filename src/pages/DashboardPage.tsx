@@ -8,6 +8,7 @@ export function DashboardPage() {
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
   const [error, setError] = useState('')
+  const [showDebug, setShowDebug] = useState(false)
 
   const fetchData = useCallback(async () => {
     try {
@@ -65,28 +66,24 @@ export function DashboardPage() {
   }
 
   const profile = data?.profile || {}
-  const recent14d = data?.recent_14d || []
-  const weekly42d = data?.weekly_42d || []
+  const recent42d = data?.recent_42d || []
+  const weekly90d = data?.weekly_90d || []
   const goals = data?.goals || []
   const lastSync = data?.last_sync || ''
+  const debug = data?.debug
+  const totalInDB = data?.total_count || 0
 
-  // Compute stats
-  const totalDuration = recent14d.reduce(
-    (sum, a: Record<string, unknown>) =>
-      sum + Number((a as Record<string, unknown>).moving_time || 0) / 3600,
+  // Compute stats using preprocessed field names
+  const totalDuration = recent42d.reduce(
+    (sum, a: Record<string, unknown>) => sum + (Number(a.duration_sec) || 0),
     0
-  )
-  const totalDistance = recent14d.reduce(
-    (sum, a: Record<string, unknown>) =>
-      sum + Number((a as Record<string, unknown>).distance || 0) / 1000,
+  ) / 3600
+  const totalDistance = recent42d.reduce(
+    (sum, a: Record<string, unknown>) => sum + (Number(a.distance_m) || 0),
     0
-  )
-  const avgHR = recent14d.length > 0
-    ? recent14d.reduce(
-        (sum, a: Record<string, unknown>) =>
-          sum + Number((a as Record<string, unknown>).average_heartrate || 0),
-        0
-      ) / recent14d.length
+  ) / 1000
+  const avgTSS = recent42d.length > 0
+    ? Math.round(recent42d.reduce((sum, a: Record<string, unknown>) => sum + (Number(a.tss) || 0), 0) / recent42d.length)
     : 0
 
   return (
@@ -122,36 +119,56 @@ export function DashboardPage() {
             上次同步: {new Date(lastSync).toLocaleString('zh-CN')}
           </p>
         )}
+        {/* Debug toggle */}
+        {debug && (
+          <button
+            onClick={() => setShowDebug(!showDebug)}
+            className="mt-2 text-xs text-gray-400 underline"
+          >
+            {showDebug ? '隐藏' : '显示'}诊断信息
+          </button>
+        )}
+        {showDebug && debug && (
+          <div className="mt-2 p-2 bg-gray-50 rounded text-xs text-gray-500 font-mono space-y-0.5">
+            <div>athlete_id: {debug.athlete_id}</div>
+            <div>profile_exists: {String(debug.profile_exists)}</div>
+            {debug.profile_error && <div className="text-red-500">profile_error: {debug.profile_error}</div>}
+            <div>training_total_in_db: {debug.training_total_in_db}</div>
+            <div>training_returned: {debug.training_returned}</div>
+            <div>weekly_returned: {debug.weekly_returned}</div>
+            {debug.training_error && <div className="text-red-500">training_error: {debug.training_error}</div>}
+          </div>
+        )}
       </div>
 
       {/* Profile Stats */}
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white rounded-2xl border border-gray-100 p-4">
-          <p className="text-xs text-gray-400 mb-1">近2周骑行时间</p>
+          <p className="text-xs text-gray-400 mb-1">近6周骑行时间</p>
           <p className="text-2xl font-bold text-gray-900">{totalDuration.toFixed(1)}h</p>
         </div>
         <div className="bg-white rounded-2xl border border-gray-100 p-4">
-          <p className="text-xs text-gray-400 mb-1">近2周骑行距离</p>
+          <p className="text-xs text-gray-400 mb-1">近6周骑行距离</p>
           <p className="text-2xl font-bold text-gray-900">{totalDistance.toFixed(0)}km</p>
         </div>
         <div className="bg-white rounded-2xl border border-gray-100 p-4">
-          <p className="text-xs text-gray-400 mb-1">平均心率</p>
+          <p className="text-xs text-gray-400 mb-1">平均TSS</p>
           <p className="text-2xl font-bold text-gray-900">
-            {avgHR > 0 ? `${avgHR.toFixed(0)}bpm` : '-'}
+            {avgTSS > 0 ? avgTSS : '-'}
           </p>
         </div>
         <div className="bg-white rounded-2xl border border-gray-100 p-4">
-          <p className="text-xs text-gray-400 mb-1">2周活动数</p>
-          <p className="text-2xl font-bold text-gray-900">{recent14d.length}</p>
+          <p className="text-xs text-gray-400 mb-1">数据库总活动</p>
+          <p className="text-2xl font-bold text-gray-900">{totalInDB}</p>
         </div>
       </div>
 
       {/* Weekly Summary Chart (simple text list) */}
-      {weekly42d.length > 0 && (
+      {weekly90d.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 p-4">
-          <h3 className="font-semibold text-gray-900 text-sm mb-3">近6周训练量</h3>
+          <h3 className="font-semibold text-gray-900 text-sm mb-3">近12周训练量</h3>
           <div className="space-y-2">
-            {weekly42d.map((week: Record<string, unknown>, i: number) => (
+            {weekly90d.map((week: Record<string, unknown>, i: number) => (
               <div key={i} className="flex items-center gap-3 text-xs text-gray-600">
                 <span className="w-20 truncate">
                   {String(week.week_start || '').slice(0, 10)}
@@ -160,13 +177,34 @@ export function DashboardPage() {
                   <div
                     className="bg-blue-500 h-2 rounded-full"
                     style={{
-                      width: `${Math.min(100, (Number(week.tss || 0) / 800) * 100)}%`,
+                      width: `${Math.min(100, (Number(week.total_tss || 0) / 800) * 100)}%`,
                     }}
                   />
                 </div>
                 <span className="w-12 text-right">
-                  TSS {String(week.tss || 0)}
+                  TSS {String(week.total_tss || 0)}
                 </span>
+                <span className="text-gray-400 w-10 text-right">
+                  ×{String(week.activity_count || 0)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Recent activities list */}
+      {recent42d.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 p-4">
+          <h3 className="font-semibold text-gray-900 text-sm mb-3">近6周活动 ({recent42d.length}条)</h3>
+          <div className="space-y-1.5 max-h-80 overflow-y-auto">
+            {recent42d.map((a: Record<string, unknown>, i: number) => (
+              <div key={i} className="flex items-center gap-2 text-xs text-gray-600 py-1 border-b border-gray-50 last:border-0">
+                <span className="text-gray-400 w-20 shrink-0">{String(a.date || '').slice(0, 10)}</span>
+                <span className="text-blue-600 font-medium">{String(a.type || '-')}</span>
+                <span className="truncate flex-1">{String(a.name || '-')}</span>
+                <span className="text-gray-500 shrink-0">TSS{String(a.tss || 0)}</span>
+                <span className="text-gray-400 shrink-0">{Math.round(Number(a.duration_sec || 0) / 60)}min</span>
               </div>
             ))}
           </div>
@@ -203,6 +241,17 @@ export function DashboardPage() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Show message if sync was successful but no data shown */}
+      {totalInDB === 0 && lastSync && (
+        <div className="bg-yellow-50 rounded-2xl border border-yellow-200 p-4 text-center">
+          <div className="text-4xl mb-2">📊</div>
+          <p className="text-sm text-yellow-800 font-medium">数据库中暂无训练数据</p>
+          <p className="text-xs text-yellow-600 mt-1">
+            请点击「全量同步」从 interval.icu 拉取历史训练数据
+          </p>
         </div>
       )}
     </div>

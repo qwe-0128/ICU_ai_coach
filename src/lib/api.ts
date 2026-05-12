@@ -126,11 +126,21 @@ export async function clearChatHistory(sessionId: string): Promise<{ success: bo
 // ============ Data Retrieval ============
 
 export interface DashboardData {
+  total_count: number
   profile: Record<string, unknown>
-  recent_14d: Record<string, unknown>[]
-  weekly_42d: Record<string, unknown>[]
+  recent_42d: Record<string, unknown>[]
+  weekly_90d: Record<string, unknown>[]
   goals: Record<string, unknown>[]
   last_sync: string
+  debug: {
+    athlete_id: string
+    profile_exists: boolean
+    profile_error: string | null
+    training_total_in_db: number
+    training_returned: number
+    weekly_returned: number
+    training_error: string | null
+  }
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
