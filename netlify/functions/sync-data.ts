@@ -29,24 +29,10 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
     diagnostics.push(`athleteId=${athleteId}`)
     diagnostics.push(`today=${today}`)
 
-    // ============ 1. Sync Profile ============
+    // ============ 1. Fetch Profile ============
     const rawProfile = await fetchProfile(athleteId)
     diagnostics.push(`profile_keys=${Object.keys(rawProfile).slice(0, 10).join(',')}`)
-    diagnostics.push(`profile_ftp=${rawProfile.ftp}, weight=${rawProfile.weight}`)
-
-    const profile = preprocessProfile(rawProfile)
-    const { error: profileErr } = await sb.from('athlete_profiles').upsert({
-      athlete_id: athleteId,
-      ftp: profile.ftp,
-      weight: profile.weight,
-      max_hr: profile.maxHR,
-      rest_hr: profile.restHR,
-      hr_zones: profile.hrZones,
-      power_zones: profile.powerZones,
-      vo2max: profile.vo2max,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'athlete_id' })
-    if (profileErr) diagnostics.push(`profile_write_error=${profileErr.message || JSON.stringify(profileErr)}`)
+    diagnostics.push(`profile_weight=${rawProfile.icu_weight || rawProfile.weight}`)
 
     // ============ 2. Determine date range ============
     let startDate: string
@@ -72,15 +58,37 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
     }
     diagnostics.push(`date_range=${startDate}~${today}`)
 
-    // ============ 3. Fetch & Preprocess Activities ============
+    // ============ 3. Fetch Activities ============
     const rawActivities = await fetchActivities(athleteId, startDate, today, diagnostics)
     diagnostics.push(`rawActivities_count=${rawActivities.length}`)
     
     if (rawActivities.length > 0) {
       const first = rawActivities[0]
-      diagnostics.push(`first_activity_id=${first.id}, type=${first.type}, name=${first.name}, tss=${first.tss}`)
+      diagnostics.push(`first_activity_id=${first.id}`)
+      diagnostics.push(`first_activity_type=${first.type}`)
+      diagnostics.push(`first_activity_name=${first.name}`)
       diagnostics.push(`first_activity_keys=${Object.keys(first).slice(0, 15).join(',')}`)
+      diagnostics.push(`first_icu_training_load=${first.icu_training_load}`)
+      diagnostics.push(`first_icu_weighted_avg_watts=${first.icu_weighted_avg_watts}`)
+      diagnostics.push(`first_icu_atl=${first.icu_atl}`)
+      diagnostics.push(`first_icu_ctl=${first.icu_ctl}`)
     }
+
+    // ============ 3b. Sync Profile (needs firstActivity for FTP/zones) ============
+    const profile = preprocessProfile(rawProfile, rawActivities[0])
+    const { error: profileErr } = await sb.from('athlete_profiles').upsert({
+      athlete_id: athleteId,
+      ftp: profile.ftp,
+      weight: profile.weight,
+      max_hr: profile.maxHR,
+      rest_hr: profile.restHR,
+      hr_zones: profile.hrZones,
+      power_zones: profile.powerZones,
+      vo2max: profile.vo2max,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'athlete_id' })
+    if (profileErr) diagnostics.push(`profile_write_error=${profileErr.message || JSON.stringify(profileErr)}`)
+    diagnostics.push(`processed_profile_ftp=${profile.ftp}, weight=${profile.weight}, maxHR=${profile.maxHR}`)
 
     let newCount = 0
 

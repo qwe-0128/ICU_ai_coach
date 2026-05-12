@@ -146,35 +146,78 @@ export async function fetchProfile(athleteId: string): Promise<any> {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function preprocessActivity(activity: any): PreprocessedActivity {
-  const streams = activity.streams || {}
-  const hrData = streams.heartrate || []
-  const powerData = streams.watts || []
-  const paceData = streams.pace || []
+  // interval.icu API returns fields with icu_ prefix
+  // Docs: https://intervals.icu/api/v1/docs
+  const ftp = activity.icu_pm_ftp || activity.icu_ftp || 200
+  const np = Math.round(activity.icu_weighted_avg_watts || 0)
+  const if_ = ftp > 0 ? parseFloat((np / ftp).toFixed(2)) : 0
+  const atl = Math.round(activity.icu_atl || 0)
+  const ctl = Math.round(activity.icu_ctl || 0)
+  
+  // Average power: API doesn't always include average_watts,
+  // compute from joules / recording_time when available
+  let avgPower = 0
+  if (activity.icu_joules && activity.icu_recording_time && activity.icu_recording_time > 0) {
+    avgPower = Math.round(activity.icu_joules / activity.icu_recording_time)
+  }
+
+  // HR zones from activity-level icu_hr_zones thresholds
+  const hrZones = activity.icu_hr_zones || []
+  const powerZones = activity.icu_power_zones || []
+  
+  // PMC zones based on activity-level zone thresholds
+  const pmcHrDist = hrZones.length > 1 
+    ? calcPMCZoneDist(activity.average_heartrate, activity.max_heartrate, hrZones) 
+    : {}
+  const pmcPowerDist = powerZones.length > 1 && avgPower > 0
+    ? calcPMCZoneDist(avgPower, 0, powerZones)
+    : {}
 
   return {
     date: activity.start_date ? activity.start_date.split('T')[0] : '',
     type: activity.type || 'Ride',
     name: activity.name || '',
-    duration_sec: Math.round((activity.moving_time || activity.duration || 0)),
-    distance_m: Math.round(activity.distance || 0),
-    tss: Math.round(activity.tss || 0),
-    if_: parseFloat((activity.if || 0).toFixed(2)),
-    np: Math.round(activity.weighted_average_watts || 0),
+    duration_sec: Math.round((activity.moving_time || activity.elapsed_time || 0)),
+    distance_m: Math.round(activity.distance || activity.icu_distance || 0),
+    tss: Math.round(activity.icu_training_load || 0),
+    if_,
+    np,
     avg_hr: Math.round(activity.average_heartrate || 0),
     max_hr: Math.round(activity.max_heartrate || 0),
-    avg_power: Math.round(activity.average_watts || 0),
-    max_power: Math.round(activity.max_watts || 0),
-    hr_zone_dist: hrData.length > 0 ? calcZoneDist(hrData, [121, 140, 158, 176, 194]) : {},
-    power_zone_dist: powerData.length > 0 
-      ? calcZoneDist(powerData, [55,76,90,105,120,150].map(p => (activity.ftp || 200) * p / 100))
-      : {},
-    fatigue: Math.round(activity.fatigue || 0),
-    form: Math.round(activity.form || 0),
-    fitness: Math.round(activity.fitness || 0),
+    avg_power: avgPower,
+    max_power: Math.round(activity.icu_pm_p_max || 0),
+    hr_zone_dist: pmcHrDist,
+    power_zone_dist: pmcPowerDist,
+    fatigue: atl,
+    form: Math.round(ctl - atl),  // TSB = CTL - ATL (form)
+    fitness: ctl,
     injury_flags: detectInjuryFlags(activity),
     notes: activity.description || '',
     raw_id: activity.id || '',
   }
+}
+
+/**
+ * Calculate zone distribution from a single value + zone thresholds
+ * Places the value into its zone (1-indexed), returns {zN: 100}
+ * where N is the zone number (all 100% since it's a single summary value)
+ */
+function calcPMCZoneDist(
+  value: number,
+  maxValue: number,
+  thresholds: number[]
+): Record<string, number> {
+  if (!value || thresholds.length < 2) return {}
+  // thresholds are the zone boundaries (upper limits of each zone)
+  // e.g. [128, 149, 171, 184, 194] means:
+  // Z1: 0-128, Z2: 129-149, Z3: 150-171, Z4: 172-184, Z5: 185-194, Z6: 195+
+  // But for %HRmax based: Z1 < 60%, Z2 60-70%, etc.
+  // We'll simplify: place avg value into one zone = 100% distribution
+  let zone = thresholds.length + 1 // default to highest zone
+  for (let i = thresholds.length - 1; i >= 0; i--) {
+    if (value <= thresholds[i]) zone = i + 1
+  }
+  return { [`z${zone}`]: 100 }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -191,24 +234,65 @@ function detectInjuryFlags(activity: any): string[] {
     }
   }
 
-  // High TSS with low IF could indicate endurance ride (neutral)
-  // Very high IF combined with high duration flags overtraining risk
-  if (activity.tss > 200) flags.push('high_tss')
-  if (activity.if && activity.if > 0.95 && (activity.moving_time || 0) > 3600) {
+  // interval.icu uses icu_training_load as TSS
+  const tss = activity.icu_training_load || 0
+  const movingTime = activity.moving_time || activity.elapsed_time || 0
+  const ftp = activity.icu_pm_ftp || activity.icu_ftp || 200
+  const np = activity.icu_weighted_avg_watts || 0
+  const ifVal = ftp > 0 ? np / ftp : 0
+
+  if (tss > 200) flags.push('high_tss')
+  if (ifVal > 0.95 && movingTime > 3600) {
     flags.push('high_intensity_long')
   }
 
   return flags
 }
 
-export function preprocessProfile(raw: any): PreprocessedProfile {
+export function preprocessProfile(raw: any, firstActivity?: any): PreprocessedProfile {
+  // Profile endpoint has: icu_weight, icu_resting_hr
+  // FTP / maxHR / zones are per-activity, so we grab from firstActivity
+  const weight = raw.icu_weight || raw.weight || 70
+  const restHR = raw.icu_resting_hr || 55
+  
+  // Extract from first activity (most recent) if available
+  const act = firstActivity || {}
+  const ftp = act.icu_pm_ftp || act.icu_ftp || 200
+  const maxHR = act.max_heartrate || 190
+  
+  // Build HR zones from activity thresholds
+  const hrThresholds: number[] = act.icu_hr_zones || []
+  const hrZones: { zone: number; low: number; high: number }[] = []
+  if (hrThresholds.length > 1) {
+    let prev = 0
+    for (let i = 0; i < hrThresholds.length; i++) {
+      hrZones.push({ zone: i + 1, low: prev, high: hrThresholds[i] })
+      prev = hrThresholds[i]
+    }
+    // Add one more zone above the highest threshold
+    hrZones.push({ zone: hrThresholds.length + 1, low: hrThresholds[hrThresholds.length - 1], high: 999 })
+  }
+  
+  // Build power zones from activity thresholds
+  const pwThresholds: number[] = act.icu_power_zones || []
+  const zoneNames = ['Recovery', 'Endurance', 'Tempo', 'Sweet Spot', 'Threshold', 'VO2 Max', 'Anaerobic']
+  const powerZones: { zone: number; name: string; low: number; high: number }[] = []
+  if (pwThresholds.length > 1) {
+    let prev = 0
+    for (let i = 0; i < pwThresholds.length; i++) {
+      powerZones.push({ zone: i + 1, name: zoneNames[i] || `Zone ${i+1}`, low: prev, high: pwThresholds[i] })
+      prev = pwThresholds[i]
+    }
+    powerZones.push({ zone: pwThresholds.length + 1, name: 'Neuromuscular', low: pwThresholds[pwThresholds.length - 1], high: 9999 })
+  }
+  
   return {
-    ftp: raw.ftp || 200,
-    weight: raw.weight || 70,
-    maxHR: raw.max_heartrate || 190,
-    restHR: raw.rest_heartrate || 55,
-    hrZones: raw.hr_zones || [],
-    powerZones: raw.power_zones || [],
+    ftp,
+    weight,
+    maxHR,
+    restHR,
+    hrZones,
+    powerZones,
     vo2max: raw.vo2max || null,
   }
 }
