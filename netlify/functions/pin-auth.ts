@@ -64,7 +64,12 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
         .eq('athlete_id', athleteId)
         .single()
 
-      if (fetchErr || !session) {
+      if (fetchErr) {
+        console.error('Supabase fetch error:', JSON.stringify(fetchErr))
+        throw new Error(`Database error: ${fetchErr.message || JSON.stringify(fetchErr)}`)
+      }
+      
+      if (!session) {
         // First time - accept any PIN
         return {
           statusCode: 200,
@@ -129,8 +134,8 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
       body: JSON.stringify({ error: 'Invalid action' }),
     }
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Internal error'
-    console.error('PIN auth error:', message)
+    const message = err instanceof Error ? err.message : `Unknown error: ${JSON.stringify(err)}`
+    console.error('PIN auth error:', err)
     return {
       statusCode: 500,
       headers: corsHeaders(),
