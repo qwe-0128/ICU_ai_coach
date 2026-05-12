@@ -183,7 +183,7 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
     return {
       statusCode: 500,
       headers: corsHeaders(),
-      body: JSON.stringify({ error: message }),
+      body: JSON.stringify({ error: `同步失败: ${message}` }),
     }
   }
 }
