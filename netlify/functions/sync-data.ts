@@ -24,10 +24,18 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
     const sb = getSupabase()
     const today = new Date().toISOString().split('T')[0]
 
+    // ============ 0. Diagnostics ============
+    const diagnostics: string[] = []
+    diagnostics.push(`athleteId=${athleteId}`)
+    diagnostics.push(`today=${today}`)
+
     // ============ 1. Sync Profile ============
     const rawProfile = await fetchProfile(athleteId)
+    diagnostics.push(`profile_keys=${Object.keys(rawProfile).slice(0, 10).join(',')}`)
+    diagnostics.push(`profile_ftp=${rawProfile.ftp}, weight=${rawProfile.weight}`)
+
     const profile = preprocessProfile(rawProfile)
-    await sb.from('athlete_profiles').upsert({
+    const { error: profileErr } = await sb.from('athlete_profiles').upsert({
       athlete_id: athleteId,
       ftp: profile.ftp,
       weight: profile.weight,
@@ -38,6 +46,7 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
       vo2max: profile.vo2max,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'athlete_id' })
+    if (profileErr) diagnostics.push(`profile_write_error=${profileErr.message || JSON.stringify(profileErr)}`)
 
     // ============ 2. Determine date range ============
     let startDate: string
@@ -61,16 +70,28 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
         startDate = new Date(Date.now() - 42 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
       }
     }
+    diagnostics.push(`date_range=${startDate}~${today}`)
 
     // ============ 3. Fetch & Preprocess Activities ============
     const rawActivities = await fetchActivities(athleteId, startDate, today)
+    diagnostics.push(`rawActivities_count=${rawActivities.length}`)
+    
+    if (rawActivities.length > 0) {
+      const first = rawActivities[0]
+      diagnostics.push(`first_activity_id=${first.id}, type=${first.type}, name=${first.name}, tss=${first.tss}`)
+      diagnostics.push(`first_activity_keys=${Object.keys(first).slice(0, 15).join(',')}`)
+    }
+
     let newCount = 0
 
     for (const raw of rawActivities) {
       const preprocessed = preprocessActivity(raw)
-      if (!preprocessed.date) continue
+      if (!preprocessed.date) {
+        diagnostics.push(`skipped_activity_no_date_id=${raw.id}`)
+        continue
+      }
 
-      const { data: existing, error: checkErr } = await sb
+      const { data: existing } = await sb
         .from('training_summaries')
         .select('id')
         .eq('raw_activity_id', preprocessed.raw_id)
@@ -78,7 +99,7 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
 
       if (existing && existing.length > 0) {
         // Update existing
-        await sb.from('training_summaries').update({
+        const { error: updateErr } = await sb.from('training_summaries').update({
           date: preprocessed.date,
           type: preprocessed.type,
           name: preprocessed.name,
@@ -99,9 +120,10 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
           injury_flags: preprocessed.injury_flags,
           notes: preprocessed.notes,
         }).eq('raw_activity_id', preprocessed.raw_id)
+        if (updateErr) diagnostics.push(`update_error_${preprocessed.raw_id}=${updateErr.message || JSON.stringify(updateErr)}`)
       } else {
         // Insert new
-        await sb.from('training_summaries').insert({
+        const { error: insertErr } = await sb.from('training_summaries').insert({
           athlete_id: athleteId,
           date: preprocessed.date,
           type: preprocessed.type,
@@ -124,16 +146,19 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
           notes: preprocessed.notes,
           raw_activity_id: preprocessed.raw_id,
         })
-        newCount++
+        if (insertErr) diagnostics.push(`insert_error_${preprocessed.raw_id}=${insertErr.message || JSON.stringify(insertErr)}`)
+        else newCount++
       }
     }
 
     // ============ 4. Update Weekly Summaries ============
-    const { data: allSummaries } = await sb
+    const { data: allSummaries, error: summariesErr } = await sb
       .from('training_summaries')
       .select('*')
       .eq('athlete_id', athleteId)
       .order('date', { ascending: true })
+
+    if (summariesErr) diagnostics.push(`summaries_read_error=${summariesErr.message || JSON.stringify(summariesErr)}`)
 
     if (allSummaries && allSummaries.length > 0) {
       const weeks = computeWeeklySummaries(allSummaries.map(s => ({
@@ -142,7 +167,7 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
       })))
 
       for (const w of weeks) {
-        await sb.from('weekly_summaries').upsert({
+        const { error: weekErr } = await sb.from('weekly_summaries').upsert({
           athlete_id: athleteId,
           week_start: w.week_start,
           week_end: w.week_end,
@@ -155,6 +180,7 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
           avg_form: w.avg_form,
           avg_fitness: w.avg_fitness,
         }, { onConflict: 'athlete_id,week_start' })
+        if (weekErr) diagnostics.push(`week_write_error_${w.week_start}=${weekErr.message || JSON.stringify(weekErr)}`)
       }
     }
 
@@ -165,6 +191,21 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
       .eq('athlete_id', athleteId)
       .lt('date', sixMonthsAgo)
 
+    // ============ 6. Read back verification ============
+    const { data: verifySummary, error: verifyErr } = await sb
+      .from('training_summaries')
+      .select('id')
+      .eq('athlete_id', athleteId)
+      .limit(1)
+    diagnostics.push(`verify_summaries_after_sync=${verifySummary?.length || 0}, error=${verifyErr ? (verifyErr.message || JSON.stringify(verifyErr)) : 'none'}`)
+
+    const { data: verifyProfile } = await sb
+      .from('athlete_profiles')
+      .select('ftp, weight, max_hr')
+      .eq('athlete_id', athleteId)
+      .single()
+    diagnostics.push(`verify_profile_ftp=${verifyProfile?.ftp}, weight=${verifyProfile?.weight}, max_hr=${verifyProfile?.max_hr}`)
+
     return {
       statusCode: 200,
       headers: corsHeaders(),
@@ -174,6 +215,7 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
         profile_updated: true,
         weeks_updated: allSummaries ? computeWeeklySummaries(allSummaries.map(s => ({...s, raw_id: s.raw_activity_id}))).length : 0,
         timestamp: new Date().toISOString(),
+        diagnostics: diagnostics.join('; '),
       }),
     }
   } catch (err: unknown) {
