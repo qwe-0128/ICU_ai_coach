@@ -21,14 +21,14 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
 
     const body = JSON.parse(event.body || '{}')
     const { force_full } = body
-    const athleteId = getEnv('ATHLETE_ID')
+    const athleteId = getEnv('INTERVAL_ICU_ATHLETE_ID')
     const sb = getSupabase()
     const today = new Date().toISOString().split('T')[0]
 
     // ============ 1. Sync Profile ============
     const rawProfile = await fetchProfile(athleteId)
     const profile = preprocessProfile(rawProfile)
-    await sb.from('cycling_profiles').upsert({
+    await sb.from('athlete_profiles').upsert({
       athlete_id: athleteId,
       ftp: profile.ftp,
       weight: profile.weight,

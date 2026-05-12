@@ -8,7 +8,7 @@ export function getEnv(key: string): string {
 }
 
 export function getSupabase() {
-  return createClient(getEnv('SUPABASE_URL'), getEnv('SUPABASE_SERVICE_KEY'))
+  return createClient(getEnv('VITE_SUPABASE_URL'), getEnv('SUPABASE_SERVICE_ROLE_KEY'))
 }
 
 export async function verifyPinToken(token: string): Promise<string> {

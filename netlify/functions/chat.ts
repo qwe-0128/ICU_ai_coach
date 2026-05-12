@@ -27,7 +27,7 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
 
     // ============ 1. Retrieve Profile ============
     const { data: profileRow } = await sb
-      .from('cycling_profiles')
+      .from('athlete_profiles')
       .select('*')
       .eq('athlete_id', athleteId)
       .single()

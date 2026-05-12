@@ -17,7 +17,7 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
 
     // Parallel fetch all data
     const [profileResult, recentResult, weeklyResult, goalsResult, lastSyncResult] = await Promise.all([
-      sb.from('cycling_profiles').select('*').eq('athlete_id', athleteId).single(),
+      sb.from('athlete_profiles').select('*').eq('athlete_id', athleteId).single(),
       sb.from('training_summaries')
         .select('*').eq('athlete_id', athleteId)
         .gte('date', new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])

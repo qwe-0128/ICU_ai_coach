@@ -4,7 +4,7 @@ import { getSupabase, getEnv, corsHeaders } from './utils/auth'
 import { createHash, randomBytes } from 'crypto'
 
 function hashPin(pin: string): string {
-  return createHash('sha256').update(pin + getEnv('PIN_SALT')).digest('hex')
+  return createHash('sha256').update(pin + getEnv('SESSION_SECRET')).digest('hex')
 }
 
 const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> => {
@@ -17,7 +17,7 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
     const { action, pin } = body
 
     const sb = getSupabase()
-    const athleteId = getEnv('ATHLETE_ID')
+    const athleteId = getEnv('INTERVAL_ICU_ATHLETE_ID')
 
     if (action === 'set') {
       if (!pin || pin.length < 4 || pin.length > 8) {
