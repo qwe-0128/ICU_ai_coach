@@ -32,7 +32,7 @@ export function DashboardPage() {
     try {
       const result: SyncResult = await syncData(full)
       setSyncMsg(
-        `同步完成: 新增${result.new_activities}项活动, 更新${result.weeks_updated}周数据`
+        `同步完成: 新增${result.new_activities}项活动, 共拉取${result.total_activities}条, 更新${result.weeks_updated}周数据\n诊断: ${result.diagnostics || '无'}`
       )
       fetchData() // Refresh after sync
     } catch (err) {

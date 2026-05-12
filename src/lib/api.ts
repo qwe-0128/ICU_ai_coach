@@ -46,6 +46,7 @@ export interface SyncResult {
   profile_updated: boolean
   weeks_updated: number
   timestamp: string
+  diagnostics: string
 }
 
 export async function syncData(forceFull?: boolean): Promise<SyncResult> {
