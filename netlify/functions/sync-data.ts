@@ -17,11 +17,10 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
     if (!token) {
       return { statusCode: 401, headers: corsHeaders(), body: JSON.stringify({ error: 'PIN required' }) }
     }
-    await verifyPinToken(token)
+    const athleteId = await verifyPinToken(token)
 
     const body = JSON.parse(event.body || '{}')
     const { force_full } = body
-    const athleteId = getEnv('INTERVAL_ICU_ATHLETE_ID')
     const sb = getSupabase()
     const today = new Date().toISOString().split('T')[0]
 
@@ -183,7 +182,7 @@ const handler: Handler = async (event: HandlerEvent): Promise<HandlerResponse> =
     return {
       statusCode: 500,
       headers: corsHeaders(),
-      body: JSON.stringify({ error: `同步失败: ${message}` }),
+      body: JSON.stringify({ error: message }),
     }
   }
 }

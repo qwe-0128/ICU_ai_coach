@@ -54,55 +54,63 @@ function calcZoneDist(values: number[], thresholds: number[]): Record<string, nu
   return dist
 }
 
+async function safeFetchJson(url: string, label: string): Promise<any> {
+  const headers = getIntervalIcuHeaders()
+  const resp = await fetch(url, { headers })
+  
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '')
+    console.error(`[${label}] HTTP ${resp.status}: ${body.substring(0, 300)}`)
+    throw new Error(
+      `Interval.icu ${label} 返回 HTTP ${resp.status} (非JSON). ` +
+      `开头: ${body.substring(0, 150)}`
+    )
+  }
+  
+  const text = await resp.text()
+  const trimmed = text.trim()
+  if (!trimmed || (!trimmed.startsWith('[') && !trimmed.startsWith('{'))) {
+    console.error(`[${label}] 非JSON响应 (${resp.status}): ${trimmed.substring(0, 300)}`)
+    throw new Error(
+      `Interval.icu ${label} 返回 HTML 而非 JSON (HTTP ${resp.status}). ` +
+      `开头: ${trimmed.substring(0, 150)}`
+    )
+  }
+  return JSON.parse(trimmed)
+}
+
 export async function fetchActivities(
   athleteId: string,
   startDate: string,
   endDate: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any[]> {
-  const baseUrl = `https://interval.icu/api/v1/athlete/${athleteId}/activities`
-  const headers = getIntervalIcuHeaders()
-  
+  const baseUrl = `https://intervals.icu/api/v1/athlete/${athleteId}/activities`
   const params = new URLSearchParams({
     oldest: startDate,
     newest: endDate,
     include: 'tss,hr_zones,power_zones,streams',
   })
-
-  const resp = await fetch(`${baseUrl}?${params}`, { headers })
-  if (!resp.ok) throw new Error(`Interval.icu API error: ${resp.status}`)
-  return resp.json()
+  return safeFetchJson(`${baseUrl}?${params}`, 'activities')
 }
 
 export async function fetchWellness(
   athleteId: string,
   startDate: string,
   endDate: string
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any[]> {
-  const baseUrl = `https://interval.icu/api/v1/athlete/${athleteId}/wellness`
-  const headers = getIntervalIcuHeaders()
-
-  const params = new URLSearchParams({
-    oldest: startDate,
-    newest: endDate,
-  })
-
-  const resp = await fetch(`${baseUrl}?${params}`, { headers })
-  if (!resp.ok) return []
-  return resp.json()
+  const baseUrl = `https://intervals.icu/api/v1/athlete/${athleteId}/wellness`
+  const params = new URLSearchParams({ oldest: startDate, newest: endDate })
+  try {
+    return await safeFetchJson(`${baseUrl}?${params}`, 'wellness')
+  } catch {
+    return [] // wellness 端点可能不可用，静默跳过
+  }
 }
 
-export async function fetchProfile(
-  athleteId: string
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Promise<any> {
-  const baseUrl = `https://interval.icu/api/v1/athlete/${athleteId}`
-  const headers = getIntervalIcuHeaders()
-
-  const resp = await fetch(baseUrl, { headers })
-  if (!resp.ok) throw new Error(`Interval.icu profile API error: ${resp.status}`)
-  return resp.json()
+export async function fetchProfile(athleteId: string): Promise<any> {
+  const baseUrl = `https://intervals.icu/api/v1/athlete/${athleteId}`
+  return safeFetchJson(baseUrl, 'profile')
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
