@@ -1,14 +1,13 @@
 // ============ API Client (Frontend) ============
-// All requests go through Netlify Functions (never exposes API keys to browser)
-
-const NETLIFY_FUNCTIONS_BASE = '/.netlify/functions'
+// Deno Deploy 全栈部署：前端与 API 同源，使用相对路径
+const API_BASE = '/api'
 
 async function callFunction(name: string, body: Record<string, unknown>) {
   const storedPin = localStorage.getItem('icu_pin_session')
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (storedPin) headers['x-pin-token'] = storedPin
 
-  const resp = await fetch(`${NETLIFY_FUNCTIONS_BASE}/${name}`, {
+  const resp = await fetch(`${API_BASE}/${name}`, {
     method: 'POST',
     headers,
     body: JSON.stringify(body),

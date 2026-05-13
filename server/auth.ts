@@ -1,18 +1,18 @@
-// ============ Shared Auth Utilities for Netlify Functions ============
-import { createClient } from '@supabase/supabase-js'
-import ws from 'ws'
+// ============ Shared Auth Utilities for Deno Deploy ============
+// @ts-nocheck
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 export function getEnv(key: string): string {
-  const val = process.env[key]
+  const val = Deno.env.get(key)
   if (!val) throw new Error(`Missing environment variable: ${key}`)
   return val
 }
 
 export function getSupabase() {
-  return createClient(getEnv('VITE_SUPABASE_URL'), getEnv('SUPABASE_SERVICE_ROLE_KEY'), {
-    auth: { persistSession: false },
-    global: { headers: { 'Content-Type': 'application/json' } },
-    realtime: { transport: ws as any },
+  const supabaseUrl = getEnv('SUPABASE_URL')
+  const supabaseKey = getEnv('SUPABASE_SERVICE_ROLE_KEY')
+  return createClient(supabaseUrl, supabaseKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
   })
 }
 
@@ -23,7 +23,6 @@ export async function verifyPinToken(token: string): Promise<string> {
     .select('athlete_id, locked_until')
     .eq('pin_hash', token)
     .single()
-
   if (error || !data) throw new Error('Invalid PIN token')
   if (data.locked_until && new Date(data.locked_until) > new Date()) {
     throw new Error('Account locked. Try again later.')
@@ -33,8 +32,7 @@ export async function verifyPinToken(token: string): Promise<string> {
 
 export function getIntervalIcuHeaders(): Record<string, string> {
   const apiKey = getEnv('INTERVAL_ICU_API_KEY')
-  // intervals.icu uses HTTP Basic Auth: username = "API_KEY" (literal), password = your actual API key
-  const basic = Buffer.from(`API_KEY:${apiKey}`).toString('base64')
+  const basic = btoa(`API_KEY:${apiKey}`)
   return {
     'Authorization': `Basic ${basic}`,
     'Content-Type': 'application/json',
@@ -49,10 +47,15 @@ export function getDeepSeekHeaders(): Record<string, string> {
   }
 }
 
-export function corsHeaders(): Record<string, string> {
-  return {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, x-pin-token',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  }
+export const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type, x-pin-token',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
+export async function sha256(text: string): Promise<string> {
+  const data = new TextEncoder().encode(text)
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+  const hashArray = Array.from(new Uint8Array(hashBuffer))
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
 }

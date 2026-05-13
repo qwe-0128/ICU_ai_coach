@@ -19,11 +19,7 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    proxy: {
-      '/.netlify/functions': {
-        target: 'http://localhost:8888',
-        changeOrigin: true,
-      },
-    },
+    // 后端 API 在 Deno Deploy，本地开发时直连 Deno Deploy
+    // 也可用 DENO_DEPLOY_URL 环境变量指定
   },
 })
