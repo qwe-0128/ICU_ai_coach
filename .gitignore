@@ -37,3 +37,6 @@ run-migration.mjs
 # Test scripts (contain real credentials / athlete IDs)
 test-api.mjs
 test-api-direct.mjs
+
+# Vite frontend entry - renamed to main.tsx so Deno Deploy auto-detects root main.ts
+src/main.ts
