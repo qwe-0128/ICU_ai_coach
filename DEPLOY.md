@@ -30,7 +30,7 @@
 
 | 资源 | 值 | 状态 |
 |------|-----|------|
-| **Supabase 项目** | `czcojfydvbnaeeyrbgcx.supabase.co` | ✅ 已创建 |
+| **Supabase 项目** | `yxenbrhyzitcbjisfffq.supabase.co` | ✅ 已创建 |
 | **001_create_tables.sql** | 创建8张表 | ✅ 已运行（但内存表可能失败）|
 | **002_fix_rls.sql** | RLS 策略修复 | ✅ 已运行 |
 | **GitHub 仓库** | `https://github.com/qwe-0128/ICU_ai_coach.git` | ✅ 已创建 |
@@ -53,7 +53,7 @@
 
 ## 🔧 步骤一：Supabase 数据库迁移（必须按顺序执行）
 
-打开 [Supabase SQL Editor](https://supabase.com/dashboard/project/czcojfydvbnaeeyrbgcx) → **SQL Editor** → **New Query**
+打开 [Supabase SQL Editor](https://supabase.com/dashboard/project/yxenbrhyzitcbjisfffq) → **SQL Editor** → **New Query**
 
 ### 迁移 1: 执行 `001_create_tables.sql`（如果已运行可跳过）
 
@@ -148,7 +148,7 @@ copy server\.env.example server\.env
 INTERVAL_ICU_ATHLETE_ID=i126277
 INTERVAL_ICU_API_KEY=你的interval.icu_API密钥
 DEEPSEEK_API_KEY=sk-你的deepseek-api-key
-SUPABASE_URL=https://czcojfydvbnaeeyrbgcx.supabase.co
+SUPABASE_URL=https://yxenbrhyzitcbjisfffq.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=你的supabase-service-role-key
 SESSION_SECRET=随机生成一个至少32字符的字符串
 ```
@@ -194,7 +194,7 @@ git push origin main
 | `INTERVAL_ICU_ATHLETE_ID` | `i126277` | interval.icu 的运动员 ID |
 | `INTERVAL_ICU_API_KEY` | 你的真实 API key | interval.icu → Settings → API Keys |
 | `DEEPSEEK_API_KEY` | `sk-你的key` | platform.deepseek.com → API Keys |
-| `SUPABASE_URL` | `https://czcojfydvbnaeeyrbgcx.supabase.co` | Supabase 项目 URL |
+| `SUPABASE_URL` | `https://yxenbrhyzitcbjisfffq.supabase.co` | Supabase 项目 URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | 你的 service_role key | Supabase → Settings → API |
 | `SESSION_SECRET` | 随机32+字符 | `openssl rand -hex 32` 生成 |
 
@@ -280,6 +280,6 @@ deno run --allow-net --allow-env --env-file=.env test-icu.ts
 ## 🔐 密钥轮换提醒
 
 **强烈建议**在部署前轮换 Supabase key：
-1. [Supabase Dashboard](https://supabase.com/dashboard/project/czcojfydvbnaeeyrbgcx) → Settings → API
+1. [Supabase Dashboard](https://supabase.com/dashboard/project/yxenbrhyzitcbjisfffq) → Settings → API
 2. 找到 **service_role key** → 点击 **Revoke**
 3. 生成新 key 并更新到 `server/.env` 和 Deno Deploy 环境变量
