@@ -54,12 +54,12 @@ async function serveStatic(pathname: string): Promise<Response | null> {
   // Security: prevent directory traversal
   if (pathname.includes('..') || pathname.includes('~')) return null
 
-  let filePath = `./dist${pathname}`
+  let filePath = `../dist${pathname}`
   const isRoot = pathname === '/' || pathname === ''
 
   // Try exact file first
   try {
-    const data = await Deno.readFile(isRoot ? './dist/index.html' : filePath)
+    const data = await Deno.readFile(isRoot ? '../dist/index.html' : filePath)
     const mime = isRoot ? 'text/html; charset=utf-8' : getMime(filePath)
     const cacheHeader = CACHE_MAX_AGE[filePath.substring(filePath.lastIndexOf('.'))] || 'public, max-age=0, must-revalidate'
     const headers: Record<string, string> = {
@@ -71,7 +71,7 @@ async function serveStatic(pathname: string): Promise<Response | null> {
   } catch {
     // File not found, try SPA fallback
     try {
-      const data = await Deno.readFile('./dist/index.html')
+      const data = await Deno.readFile('../dist/index.html')
       return new Response(data, {
         status: 200,
         headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=0, must-revalidate', ...corsHeaders },

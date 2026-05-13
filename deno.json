@@ -1,10 +1,9 @@
 {
   "tasks": {
-    "start": "deno run --allow-net --allow-env --allow-read server/main.ts",
-    "dev": "deno run --allow-net --allow-env --allow-read --watch server/main.ts"
+    "start": "deno run --allow-net --allow-env --allow-read main.ts",
+    "dev": "deno run --allow-net --allow-env --allow-read --watch main.ts"
   },
   "compilerOptions": {
     "lib": ["deno.window", "deno.unstable"]
-  },
-  "entryPoint": "server/main.ts"
+  }
 }
