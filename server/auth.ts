@@ -23,9 +23,15 @@ export async function verifyPinToken(token: string): Promise<string> {
     .select('athlete_id, locked_until')
     .eq('pin_hash', token)
     .single()
-  if (error || !data) throw new Error('Invalid PIN token')
+  if (error || !data) {
+    const e = new Error('Invalid PIN token')
+    ;(e as any).status = 401
+    throw e
+  }
   if (data.locked_until && new Date(data.locked_until) > new Date()) {
-    throw new Error('Account locked. Try again later.')
+    const e = new Error('Account locked. Try again later.')
+    ;(e as any).status = 423
+    throw e
   }
   return data.athlete_id
 }

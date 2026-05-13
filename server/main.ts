@@ -44,7 +44,13 @@ function json(data: unknown, status = 200): Response {
 }
 
 function error(msg: string, status = 500): Response {
-  return json({ error: msg }, status)
+  return new Response(JSON.stringify({ error: msg }), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+}
+
+function apiError(err: unknown): Response {
+  const msg = err instanceof Error ? err.message : 'Internal error'
+  const status = (err as any)?.status || 500
+  return error(msg, status)
 }
 
 function getMime(path: string): string {
@@ -86,10 +92,22 @@ async function serveStatic(pathname: string): Promise<Response | null> {
 }
 
 // ============ PIN Auth ============
-async function handlePinAuth(body: any): Promise<Response> {
+async function handlePinAuth(req: Request, body: any): Promise<Response> {
   const { action, pin } = body || {}
   const sb = getSupabase()
   const athleteId = getEnv('INTERVAL_ICU_ATHLETE_ID')
+
+  // Validate existing token without PIN (used on page load)
+  if (action === 'validate') {
+    const token = req.headers.get('x-pin-token')
+    if (!token) return error('PIN required', 401)
+    try {
+      await verifyPinToken(token)
+      return json({ valid: true })
+    } catch (e: unknown) {
+      return apiError(e)
+    }
+  }
 
   if (action === 'set') {
     if (!pin || pin.length < 4 || pin.length > 8) return error('PIN must be 4-8 digits', 400)
@@ -104,7 +122,7 @@ async function handlePinAuth(body: any): Promise<Response> {
       dbError = r.error
     }
     if (dbError) throw dbError
-    return json({ success: true })
+    return json({ success: true, token: pinHash })
   }
 
   if (action === 'verify') {
@@ -337,13 +355,18 @@ async function handleRequest(req: Request): Promise<Response> {
       // Public route: PIN auth (no token required)
       if (pathname === '/api/pin-auth') {
         const body = req.body ? await req.json().catch(() => ({})) : {}
-        return await handlePinAuth(body)
+      return await handlePinAuth(req, body)
       }
 
       // Protected routes: PIN token required
       const token = req.headers.get('x-pin-token')
       if (!token) return error('PIN required', 401)
-      const athleteId = await verifyPinToken(token)
+      let athleteId: string
+      try {
+        athleteId = await verifyPinToken(token)
+      } catch (e: unknown) {
+        return apiError(e)
+      }
       const body = req.body ? await req.json().catch(() => ({})) : {}
 
       switch (pathname) {
@@ -356,9 +379,8 @@ async function handleRequest(req: Request): Promise<Response> {
         default: return error('API not found', 404)
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Internal error'
-      console.error('Server error:', message)
-      return error(message)
+      console.error('Server error:', err instanceof Error ? err.message : err)
+      return apiError(err)
     }
   }
 

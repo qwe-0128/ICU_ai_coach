@@ -7,13 +7,36 @@ export function useAuth() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
 
-  // Check if PIN session exists on mount
+  // Check if PIN session exists and validate on mount
   useEffect(() => {
     const stored = localStorage.getItem(PIN_KEY)
-    if (stored) {
-      setIsAuthenticated(true)
+    if (!stored) {
+      setIsLoading(false)
+      return
     }
-    setIsLoading(false)
+
+    // Validate stored token with lightweight call
+    let cancelled = false
+    const validate = async () => {
+      try {
+        const resp = await fetch('/api/pin-auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-pin-token': stored },
+          body: JSON.stringify({ action: 'validate' }),
+        })
+        if (!resp.ok) {
+          localStorage.removeItem(PIN_KEY)
+          if (!cancelled) setIsAuthenticated(false)
+        } else {
+          if (!cancelled) setIsAuthenticated(true)
+        }
+      } catch {
+        // Network error, keep existing state
+      } finally {
+        if (!cancelled) setIsLoading(false)
+      }
+    }
+    validate()
 
     // Listen for pin-required events from API
     const handler = () => {
@@ -21,7 +44,10 @@ export function useAuth() {
       localStorage.removeItem(PIN_KEY)
     }
     window.addEventListener('pin-required', handler)
-    return () => window.removeEventListener('pin-required', handler)
+    return () => {
+      cancelled = true
+      window.removeEventListener('pin-required', handler)
+    }
   }, [])
 
   const authenticate = useCallback(async (pin: string, _setPin: boolean, apiCall: (pin: string) => Promise<{ success: boolean; token: string }>) => {
