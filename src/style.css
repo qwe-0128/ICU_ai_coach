@@ -83,3 +83,107 @@ body {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
+
+/* ============ Markdown Rendering ============ */
+.markdown-content {
+  line-height: 1.7;
+  word-break: break-word;
+}
+
+.markdown-content > * + * {
+  margin-top: 0.5rem;
+}
+
+.markdown-h1 { font-size: 1.25rem; font-weight: 700; color: var(--color-text); margin-top: 1rem; }
+.markdown-h2 { font-size: 1.1rem; font-weight: 600; color: var(--color-text); margin-top: 0.8rem; }
+.markdown-h3 { font-size: 1rem; font-weight: 600; color: var(--color-text); margin-top: 0.6rem; }
+.markdown-h4,
+.markdown-h5,
+.markdown-h6 { font-size: 0.9rem; font-weight: 500; color: var(--color-text-muted); margin-top: 0.4rem; }
+
+.markdown-p {
+  color: var(--color-text);
+  margin: 0.35rem 0;
+}
+
+.markdown-strong {
+  font-weight: 700;
+  color: var(--color-accent);
+}
+
+.markdown-em {
+  font-style: italic;
+  color: var(--color-text-muted);
+}
+
+.markdown-del {
+  text-decoration: line-through;
+  color: var(--color-text-muted);
+  opacity: 0.7;
+}
+
+.markdown-inline-code {
+  background: var(--color-surface-light);
+  color: var(--color-accent);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  font-size: 0.85em;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.markdown-code-block {
+  background: #0d1117;
+  color: #e6edf3;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  overflow-x: auto;
+  font-size: 0.78rem;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  line-height: 1.6;
+  margin: 0.5rem 0;
+}
+
+.markdown-code-block code {
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+.markdown-ul,
+.markdown-ol {
+  padding-left: 1.2rem;
+  margin: 0.3rem 0;
+}
+
+.markdown-li {
+  color: var(--color-text);
+  margin: 0.15rem 0;
+}
+
+.markdown-blockquote {
+  border-left: 3px solid var(--color-accent);
+  padding-left: 0.75rem;
+  margin: 0.5rem 0;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.markdown-hr {
+  border: none;
+  border-top: 1px solid var(--color-surface-light);
+  margin: 0.75rem 0;
+}
+
+/* Ensure markdown inside message bubbles inherits correct colors */
+.bg-blue-600 .markdown-content,
+.bg-blue-600 .markdown-p,
+.bg-blue-600 .markdown-h1,
+.bg-blue-600 .markdown-h2,
+.bg-blue-600 .markdown-h3 {
+  color: #fff;
+}
+
+.bg-blue-600 .markdown-strong { color: #fbbf24; }
+.bg-blue-600 .markdown-inline-code { background: rgba(255,255,255,0.2); color: #fff; }
+.bg-blue-600 .markdown-code-block { background: rgba(0,0,0,0.3); color: #e2e8f0; }
+.bg-blue-600 .markdown-blockquote { border-left-color: rgba(255,255,255,0.5); color: rgba(255,255,255,0.8); }

@@ -1,82 +1,81 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthContext } from '../context/AuthContext'
 
 export function PinLockPage() {
-  const { setPin, verifyPin, error } = useAuthContext()
-  const [pin, setLocalPin] = useState('')
-  const [isFirstTime, setIsFirstTime] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [pin, setPin] = useState('')
+  const [error, setError] = useState(false)
+  const [shake, setShake] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const { verifyPin, isAuthenticated } = useAuthContext()
   const navigate = useNavigate()
 
-  const handleSubmit = async () => {
-    if (pin.length < 4 || isSubmitting) return
-    setIsSubmitting(true)
+  useEffect(() => {
+    if (isAuthenticated) navigate('/', { replace: true })
+  }, [isAuthenticated, navigate])
 
-    try {
-      if (isFirstTime) {
-        const ok = await setPin(pin)
-        if (ok) navigate('/', { replace: true })
-      } else {
-        const ok = await verifyPin(pin)
-        if (ok) navigate('/', { replace: true })
-        // If not ok, check if it's first time
-        if (!ok) {
-          try {
-            const ok2 = await setPin(pin)
-            if (ok2) {
-              setIsFirstTime(false)
-              navigate('/', { replace: true })
-            }
-          } catch {
-            // Ignore
-          }
-        }
-      }
-    } finally {
-      setIsSubmitting(false)
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+
+  const handleSubmit = async () => {
+    if (pin.length < 4) return
+    const ok = await verifyPin(pin)
+    if (!ok) {
+      setError(true)
+      setShake(true)
+      setPin('')
+      setTimeout(() => setShake(false), 500)
+      inputRef.current?.focus()
     }
   }
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleSubmit()
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+    <div className="min-h-screen bg-bg flex flex-col items-center justify-center px-6">
+      <div className={`${shake ? 'animate-[shake_0.5s_ease-in-out]' : ''}`}>
         <div className="text-center mb-8">
-          <div className="text-5xl mb-4">🚴</div>
-          <h1 className="text-xl font-bold text-gray-900">骑行AI教练</h1>
-          <p className="text-sm text-gray-500 mt-2">
-            {isFirstTime ? '首次使用，请设置4-8位PIN码' : '请输入PIN码解锁'}
-          </p>
+          <div className="text-6xl mb-4">🔒</div>
+          <h1 className="text-xl font-bold text-text mb-1">骑行AI教练</h1>
+          <p className="text-text-muted text-sm">输入PIN码解锁</p>
         </div>
 
-        <input
-          type="password"
-          inputMode="numeric"
-          maxLength={8}
-          value={pin}
-          onChange={(e) => {
-            const val = e.target.value.replace(/\D/g, '')
-            setLocalPin(val)
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') handleSubmit()
-          }}
-          placeholder="输入PIN码"
-          className="w-full px-4 py-3 text-center text-2xl tracking-widest border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
-          autoFocus
-        />
+        <div className="bg-surface border border-surface-light rounded-2xl p-6 w-72 mx-auto">
+          <input
+            ref={inputRef}
+            type="password"
+            value={pin}
+            onChange={(e) => { setPin(e.target.value); setError(false) }}
+            onKeyDown={handleKeyDown}
+            maxLength={10}
+            inputMode="numeric"
+            pattern="[0-9]*"
+            placeholder="PIN码"
+            className={`w-full text-center text-2xl tracking-[0.5em] py-3 px-4 rounded-xl border bg-bg text-text outline-none focus:ring-2 focus:ring-primary ${
+              error ? 'border-danger focus:ring-danger' : 'border-surface-light'
+            }`}
+            autoComplete="off"
+          />
 
-        {error && (
-          <p className="text-red-500 text-sm text-center mt-3">{error}</p>
-        )}
+          {error && (
+            <p className="text-danger text-xs text-center mt-3">PIN码错误，请重试</p>
+          )}
 
-        <button
-          onClick={handleSubmit}
-          disabled={pin.length < 4 || isSubmitting}
-          className="w-full mt-6 px-6 py-3 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-        >
-          {isSubmitting ? '验证中...' : '解锁'}
-        </button>
+          <button
+            onClick={handleSubmit}
+            disabled={pin.length < 4}
+            className="w-full mt-4 py-3 bg-primary text-white rounded-xl font-medium text-sm hover:bg-primary-dark disabled:bg-surface-light disabled:text-text-muted disabled:cursor-not-allowed transition-colors"
+          >
+            解锁
+          </button>
+        </div>
+
+        <p className="text-text-muted text-xs text-center mt-6">
+          您的数据仅存储在本地浏览器中
+        </p>
       </div>
     </div>
   )

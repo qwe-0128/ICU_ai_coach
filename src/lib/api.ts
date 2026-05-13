@@ -127,6 +127,7 @@ export async function clearChatHistory(sessionId: string): Promise<{ success: bo
 
 export interface DashboardData {
   total_count: number
+  strava_empty_count: number
   profile: Record<string, unknown>
   recent_42d: Record<string, unknown>[]
   weekly_90d: Record<string, unknown>[]

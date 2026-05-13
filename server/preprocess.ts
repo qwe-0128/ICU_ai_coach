@@ -9,6 +9,7 @@ export interface PreprocessedActivity {
   hr_zone_dist: Record<string, number>; power_zone_dist: Record<string, number>
   fatigue: number; form: number; fitness: number
   injury_flags: string[]; notes: string; raw_id: string
+  data_source: 'icu' | 'strava_empty' | 'unknown'
 }
 
 export interface PreprocessedProfile {
@@ -66,14 +67,36 @@ export async function fetchProfile(athleteId: string): Promise<any> {
 
 function diag(arr: string[] | undefined, msg: string) { if (arr) arr.push(msg) }
 
-export function preprocessActivity(activity: any): PreprocessedActivity {
-  const ftp = activity.icu_pm_ftp || activity.icu_ftp || 200
+/** Detect if activity has performance data (power/heartrate/TSS) — Strava-synced activities often lack these */
+function detectDataSource(activity: any): 'icu' | 'strava_empty' | 'unknown' {
+  const externalId = String(activity.external_id || activity.provider || '')
+  const isStrava = externalId.toLowerCase().includes('strava') ||
+    String(activity.name || '').toLowerCase().includes('strava') ||
+    String(activity.description || '').toLowerCase().includes('strava')
+
+  const hasPerformanceData =
+    (activity.icu_training_load && activity.icu_training_load > 0) ||
+    (activity.average_heartrate && activity.average_heartrate > 0) ||
+    (activity.icu_weighted_avg_watts && activity.icu_weighted_avg_watts > 0) ||
+    (activity.icu_joules && activity.icu_joules > 0)
+
+  if (isStrava && !hasPerformanceData) return 'strava_empty'
+  if (!isStrava && hasPerformanceData) return 'icu'
+  if (isStrava && hasPerformanceData) return 'icu'
+  return 'unknown'
+}
+
+export function preprocessActivity(activity: any, profileFtp?: number): PreprocessedActivity {
+  // FTP fallback: use activity value first, then profile value, then default 200
+  const ftpRaw = activity.icu_pm_ftp || activity.icu_ftp || 0
+  const ftp = ftpRaw > 0 ? ftpRaw : (profileFtp || 200)
   const np = Math.round(activity.icu_weighted_avg_watts || 0)
   const if_ = ftp > 0 ? parseFloat((np / ftp).toFixed(2)) : 0
   let avgPower = 0
   if (activity.icu_joules && activity.icu_recording_time && activity.icu_recording_time > 0) {
     avgPower = Math.round(activity.icu_joules / activity.icu_recording_time)
   }
+  const dataSource = detectDataSource(activity)
   return {
     date: (activity.start_date || activity.start_date_local || '').split('T')[0],
     type: activity.type || 'Ride',
@@ -94,6 +117,7 @@ export function preprocessActivity(activity: any): PreprocessedActivity {
     injury_flags: detectInjuryFlags(activity),
     notes: activity.description || '',
     raw_id: String(activity.id || ''),
+    data_source: dataSource,
   }
 }
 
@@ -115,10 +139,10 @@ function detectInjuryFlags(activity: any): string[] {
 export function preprocessProfile(raw: any, firstActivity?: any): PreprocessedProfile {
   const act = firstActivity || {}
   return {
-    ftp: act.icu_pm_ftp || act.icu_ftp || 200,
+    ftp: act.icu_pm_ftp || act.icu_ftp || raw.ftp || 200,
     weight: raw.icu_weight || raw.weight || 70,
-    maxHR: act.max_heartrate || 190,
-    restHR: raw.icu_resting_hr || 55,
+    maxHR: act.max_heartrate || raw.max_hr || raw.max_heartrate || 190,
+    restHR: raw.icu_resting_hr || raw.rest_hr || 55,
     hrZones: [],
     powerZones: [],
     vo2max: raw.vo2max || null,
@@ -170,9 +194,20 @@ export function buildSystemPrompt(profile: any, recent14d: any[], weekly42d: any
     '',
     '## 近14天训练详情',
   ]
+  let stravaEmptyCount = 0
   for (const a of recent14d) {
+    // Strava empty activities: compact format, save tokens
+    if (a.data_source === 'strava_empty') {
+      stravaEmptyCount++
+      lines.push(`${a.date} | ${a.type} | ${a.name || '未命名'} | ${(a.distance_m/1000).toFixed(1)}km ${Math.round(a.duration_sec/60)}min | 🔒Strava隐私限制，无详细表现数据`)
+      continue
+    }
     const flags = a.injury_flags?.length > 0 ? ` ⚠️${a.injury_flags.join(',')}` : ''
-    lines.push(`${a.date} | ${a.type} | ${a.name} | ${a.tss}TSS IF${a.if_} | ${Math.round(a.duration_sec/60)}min ${(a.distance_m/1000).toFixed(1)}km | HR${a.avg_hr}/${a.max_hr}bpm PWR${a.avg_power}/${a.max_power}W | 疲劳:${a.fatigue} 状态:${a.form} 体能:${a.fitness}${flags}`)
+    const sourceTag = a.data_source === 'unknown' ? ' [?]' : ''
+    lines.push(`${a.date} | ${a.type} | ${a.name} | ${a.tss}TSS IF${a.if_} | ${Math.round(a.duration_sec/60)}min ${(a.distance_m/1000).toFixed(1)}km | HR${a.avg_hr}/${a.max_hr}bpm PWR${a.avg_power}/${a.max_power}W | 疲劳:${a.fatigue} 状态:${a.form} 体能:${a.fitness}${flags}${sourceTag}`)
+  }
+  if (stravaEmptyCount > 0) {
+    lines.push(`\n⚠️ 以上 ${stravaEmptyCount} 条来自Strava同步的活动缺少详细表现数据（因Strava隐私政策限制），仅提供距离和时长。`)
   }
   lines.push('', '## 近42天周度统计')
   for (const w of weekly42d) {

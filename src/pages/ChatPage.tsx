@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { sendChat, clearChatHistory } from '../lib/api'
 import type { ChatMessage } from '../lib/api'
+import { Markdown } from '../components/Markdown'
 
 interface UIMessage extends ChatMessage {
   id: string
@@ -74,6 +75,12 @@ export function ChatPage() {
     }
   }, [input, isLoading, sessionId])
 
+  const getQuickActions = () => [
+    '分析我近一周的训练状态',
+    '我该休息还是继续训练？',
+    '帮我制定下一周的训练计划',
+  ]
+
   const handleClear = async () => {
     if (sessionId && confirm('确定要清除当前对话历史吗？')) {
       try {
@@ -94,7 +101,17 @@ export function ChatPage() {
           <div className="text-center text-gray-400 mt-12">
             <div className="text-5xl mb-3">🤖</div>
             <p className="text-sm">开始和你的AI教练对话吧</p>
-            <p className="text-xs mt-2 text-gray-300">示例：分析我最近的训练状态</p>
+            <div className="flex flex-wrap justify-center gap-2 mt-4">
+              {getQuickActions().map((action, i) => (
+                <button
+                  key={i}
+                  onClick={() => setInput(action)}
+                  className="px-3 py-1.5 bg-gray-100 border border-gray-200 rounded-full text-xs text-gray-600 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition-colors"
+                >
+                  {action}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -110,7 +127,11 @@ export function ChatPage() {
                   : 'bg-white border border-gray-100 text-gray-800 rounded-bl-md shadow-sm'
               }`}
             >
-              <p className="whitespace-pre-wrap">{msg.content}</p>
+              {msg.role === 'assistant' ? (
+                <Markdown content={msg.content} />
+              ) : (
+                <p className="whitespace-pre-wrap">{msg.content}</p>
+              )}
               {msg.tokens && (
                 <p className="text-[10px] text-gray-400 mt-1">{msg.tokens}</p>
               )}

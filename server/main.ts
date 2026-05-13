@@ -169,7 +169,7 @@ async function handleChat(athleteId: string, body: any): Promise<Response> {
 
   const systemPrompt = buildSystemPrompt(
     { ftp: profileRow?.ftp || 200, weight: profileRow?.weight || 70, maxHR: profileRow?.max_hr || 190, restHR: profileRow?.rest_hr || 55, hrZones: profileRow?.hr_zones || [], powerZones: profileRow?.power_zones || [], vo2max: profileRow?.vo2max || null },
-    (recentActivities || []).map(a => ({ date: a.date, type: a.type, name: a.name, duration_sec: a.duration_sec, distance_m: a.distance_m, tss: a.tss, if_: a.if_, np: a.np, avg_hr: a.avg_hr, max_hr: a.max_hr, avg_power: a.avg_power, max_power: a.max_power, hr_zone_dist: a.hr_zone_dist || {}, power_zone_dist: a.power_zone_dist || {}, fatigue: a.fatigue, form: a.form, fitness: a.fitness, injury_flags: a.injury_flags || [], notes: a.notes || '', raw_id: a.raw_activity_id || '' })),
+    (recentActivities || []).map(a => ({ date: a.date, type: a.type, name: a.name, duration_sec: a.duration_sec, distance_m: a.distance_m, tss: a.tss, if_: a.if_, np: a.np, avg_hr: a.avg_hr, max_hr: a.max_hr, avg_power: a.avg_power, max_power: a.max_power, hr_zone_dist: a.hr_zone_dist || {}, power_zone_dist: a.power_zone_dist || {}, fatigue: a.fatigue, form: a.form, fitness: a.fitness, injury_flags: a.injury_flags || [], notes: a.notes || '', raw_id: a.raw_activity_id || '', data_source: a.data_source || 'unknown' })),
     (weeklyData || []).map(w => ({ week_start: w.week_start, week_end: w.week_end, total_tss: w.total_tss, avg_if: w.avg_if, total_duration_sec: w.total_duration_sec, total_distance_m: w.total_distance_m, activity_count: w.activity_count, avg_fatigue: w.avg_fatigue, avg_form: w.avg_form, avg_fitness: w.avg_fitness })),
     (goals || []).map(g => ({ type: g.type, target: g.target, unit: g.unit, deadline: g.deadline, status: g.status })),
     (chatMemories || []).map(m => ({ content: m.content, created_at: m.created_at })),
@@ -202,6 +202,7 @@ async function handleChat(athleteId: string, body: any): Promise<Response> {
 async function handleDashboard(athleteId: string): Promise<Response> {
   const sb = getSupabase()
   const { count: totalCount } = await sb.from('training_summaries').select('count', { count: 'exact', head: true }).eq('athlete_id', athleteId)
+  const { count: stravaCount } = await sb.from('training_summaries').select('count', { count: 'exact', head: true }).eq('athlete_id', athleteId).eq('data_source', 'strava_empty')
   const [profileResult, recentResult, weeklyResult, goalsResult, lastSyncResult] = await Promise.all([
     sb.from('athlete_profiles').select('*').eq('athlete_id', athleteId).single(),
     sb.from('training_summaries').select('*').eq('athlete_id', athleteId).gte('date', new Date(Date.now() - 42 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]).order('date', { ascending: false }),
@@ -210,7 +211,7 @@ async function handleDashboard(athleteId: string): Promise<Response> {
     sb.from('training_summaries').select('date').eq('athlete_id', athleteId).order('date', { ascending: false }).limit(1),
   ])
   return json({
-    total_count: totalCount || 0, profile: profileResult.data || {}, recent_42d: recentResult.data || [],
+    total_count: totalCount || 0, strava_empty_count: stravaCount || 0, profile: profileResult.data || {}, recent_42d: recentResult.data || [],
     weekly_90d: weeklyResult.data || [], goals: goalsResult.data || [], last_sync: lastSyncResult.data?.[0]?.date || '',
   })
 }
@@ -239,16 +240,16 @@ async function handleSyncData(athleteId: string, body: any): Promise<Response> {
 
   let newCount = 0
   for (const raw of rawActivities) {
-    const preprocessed = preprocessActivity(raw)
+    const preprocessed = preprocessActivity(raw, profile.ftp)
     if (!preprocessed.date) { diagnostics.push(`skipped_activity_no_date_id=${raw.id}`); continue }
     const { data: existing } = await sb.from('training_summaries').select('id').eq('raw_activity_id', preprocessed.raw_id).limit(1)
     if (existing?.length > 0) {
       await sb.from('training_summaries').update({
-        date: preprocessed.date, type: preprocessed.type, name: preprocessed.name, duration_sec: preprocessed.duration_sec, distance_m: preprocessed.distance_m, tss: preprocessed.tss, if_: preprocessed.if_, np: preprocessed.np, avg_hr: preprocessed.avg_hr, max_hr: preprocessed.max_hr, avg_power: preprocessed.avg_power, max_power: preprocessed.max_power, hr_zone_dist: preprocessed.hr_zone_dist, power_zone_dist: preprocessed.power_zone_dist, fatigue: preprocessed.fatigue, form: preprocessed.form, fitness: preprocessed.fitness, injury_flags: preprocessed.injury_flags, notes: preprocessed.notes,
+        date: preprocessed.date, type: preprocessed.type, name: preprocessed.name, duration_sec: preprocessed.duration_sec, distance_m: preprocessed.distance_m, tss: preprocessed.tss, if_: preprocessed.if_, np: preprocessed.np, avg_hr: preprocessed.avg_hr, max_hr: preprocessed.max_hr, avg_power: preprocessed.avg_power, max_power: preprocessed.max_power, hr_zone_dist: preprocessed.hr_zone_dist, power_zone_dist: preprocessed.power_zone_dist, fatigue: preprocessed.fatigue, form: preprocessed.form, fitness: preprocessed.fitness, injury_flags: preprocessed.injury_flags, notes: preprocessed.notes, data_source: preprocessed.data_source,
       }).eq('raw_activity_id', preprocessed.raw_id)
     } else {
       await sb.from('training_summaries').insert({
-        athlete_id: athleteId, date: preprocessed.date, type: preprocessed.type, name: preprocessed.name, duration_sec: preprocessed.duration_sec, distance_m: preprocessed.distance_m, tss: preprocessed.tss, if_: preprocessed.if_, np: preprocessed.np, avg_hr: preprocessed.avg_hr, max_hr: preprocessed.max_hr, avg_power: preprocessed.avg_power, max_power: preprocessed.max_power, hr_zone_dist: preprocessed.hr_zone_dist, power_zone_dist: preprocessed.power_zone_dist, fatigue: preprocessed.fatigue, form: preprocessed.form, fitness: preprocessed.fitness, injury_flags: preprocessed.injury_flags, notes: preprocessed.notes, raw_activity_id: preprocessed.raw_id,
+        athlete_id: athleteId, date: preprocessed.date, type: preprocessed.type, name: preprocessed.name, duration_sec: preprocessed.duration_sec, distance_m: preprocessed.distance_m, tss: preprocessed.tss, if_: preprocessed.if_, np: preprocessed.np, avg_hr: preprocessed.avg_hr, max_hr: preprocessed.max_hr, avg_power: preprocessed.avg_power, max_power: preprocessed.max_power, hr_zone_dist: preprocessed.hr_zone_dist, power_zone_dist: preprocessed.power_zone_dist, fatigue: preprocessed.fatigue, form: preprocessed.form, fitness: preprocessed.fitness, injury_flags: preprocessed.injury_flags, notes: preprocessed.notes, raw_activity_id: preprocessed.raw_id, data_source: preprocessed.data_source,
       })
       newCount++
     }
@@ -291,14 +292,40 @@ async function handleWorkoutEdit(athleteId: string, body: any): Promise<Response
   const sb = getSupabase()
 
   if (action === 'preview') {
+    const today = new Date()
+    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1)
+    const tomorrowStr = tomorrow.toISOString().split('T')[0]
     const dsHeaders = getDeepSeekHeaders()
     const dsResp = await fetch('https://api.deepseek.com/v1/chat/completions', {
       method: 'POST', headers: dsHeaders,
       body: JSON.stringify({
         model: 'deepseek-chat', max_tokens: 1000, temperature: 0.3,
         messages: [
-          { role: 'system', content: `你是自行车训练课程设计助手。根据用户的描述，生成符合 interval.icu API 格式的训练课程 JSON。interval.icu 课程格式：{"name":"课程名称","description":"课程描述","type":"Ride"|"VirtualRide","workout_doc":"MRC格式的训练文档"}。输出必须是纯 JSON，不要包裹在代码块中。` },
-          { role: 'user', content: `用户描述：${description}\n\n请生成训练课程 JSON。` },
+          {
+            role: 'system',
+            content: `你是自行车训练课程设计助手。根据用户的自然语言描述，解析出训练课程的参数，输出纯JSON（不要包裹在代码块中）。
+
+interval.icu 需要的 JSON 结构：
+{
+  "name": "课程名称（简短，如 2小时Z2耐力骑行）",
+  "description": "课程描述（一句话，如 心率控制在120-140bpm的耐力骑行）",
+  "type": "Ride",
+  "date": "${tomorrowStr}",          // 默认明天，如果用户指定了日期则用指定日期（格式 YYYY-MM-DD）
+  "duration_min": 120,               // 预计时长（分钟）
+  "target_hr_low": 120,              // 目标心率下限（用户描述的心率区推算出bpm，无则0）
+  "target_hr_high": 150,             // 目标心率上限
+  "target_power_low": 150,           // 目标功率下限（瓦特，无则0）
+  "target_power_high": 220,          // 目标功率上限
+  "zones": "Z2",                     // 训练区间（如 Z1/Z2/Z3/Z4/Z5/Z6/Z7）
+  "notes": "附加说明"                // 任何额外备注
+}
+
+心率区参考（如用户说Z2）：Z1:<60%HRmax, Z2:60-70%, Z3:70-80%, Z4:80-90%, Z5:90-100%, Z6:>100%。
+功率区参考（如用户说Z2耐力）：Z2约55-75% FTP。
+如果用户没有提到具体日期，默认用明天（${tomorrowStr}）。
+`
+          },
+          { role: 'user', content: `用户描述：${description}\n\n请解析并生成训练课程 JSON。` },
         ],
       }),
     })
@@ -306,9 +333,27 @@ async function handleWorkoutEdit(athleteId: string, body: any): Promise<Response
     const dsData = await dsResp.json()
     const reply = dsData.choices?.[0]?.message?.content || ''
     let workoutData: any = {}
-    try { const clean = reply.replace(/```(?:json)?\n?/g, '').replace(/```/g, '').trim(); workoutData = JSON.parse(clean) } catch { workoutData = { raw_plan: reply, error: 'Failed to parse workout JSON' } }
-    await sb.from('workout_edits').insert({ athlete_id: athleteId, workout_id: workout_id || `new_${Date.now()}`, action: 'create', changes: workoutData, status: 'pending', created_at: new Date().toISOString() })
-    return json({ action: 'create', workout_data: workoutData, summary: workoutData.name || workoutData.raw_plan || 'Workout generated' })
+    try {
+      const clean = reply.replace(/```(?:json)?\n?/g, '').replace(/```/g, '').trim()
+      workoutData = JSON.parse(clean)
+      // Build summary for preview
+      workoutData._preview_summary = `${workoutData.name || '训练课程'}\n日期: ${workoutData.date || tomorrowStr}\n类型: ${workoutData.type || 'Ride'} | 时长: ${workoutData.duration_min || 60}min\n${workoutData.zones ? '区间: ' + workoutData.zones : ''}${workoutData.notes ? '\n备注: ' + workoutData.notes : ''}`
+    } catch {
+      workoutData = { raw_plan: reply, error: 'Failed to parse workout JSON' }
+    }
+    await sb.from('workout_edits').insert({
+      athlete_id: athleteId,
+      workout_id: workout_id || `new_${Date.now()}`,
+      action: 'create',
+      changes: workoutData,
+      status: 'pending',
+      created_at: new Date().toISOString(),
+    })
+    return json({
+      action: 'create',
+      workout_data: workoutData,
+      summary: workoutData._preview_summary || workoutData.name || workoutData.raw_plan || 'Workout generated',
+    })
   }
 
   if (action === 'apply') {
@@ -317,10 +362,52 @@ async function handleWorkoutEdit(athleteId: string, body: any): Promise<Response
     let method = 'POST'
     let url = baseUrl
     const payload: any = { ...workout_data }
+
+    // Clean preview-internal fields
+    delete payload._preview_summary
+    delete payload.raw_plan
+    delete payload.error
+
     if (edit_action === 'update' && workout_id) { method = 'PUT'; url = `${baseUrl}/${workout_id}` }
-    else if (edit_action === 'delete' && workout_id) { method = 'DELETE'; url = `${baseUrl}/${workout_id}` }
-    const icuResp = await fetch(url, { method, headers: icuHeaders, body: method !== 'DELETE' ? JSON.stringify(payload) : undefined })
-    if (!icuResp.ok) { const errText = await icuResp.text(); throw new Error(`Interval.icu API error: ${icuResp.status} - ${errText}`) }
+    else if (edit_action === 'delete' && workout_id) { method = 'DELETE'; url = `${baseUrl}/${workout_id}`; payload.id = workout_id }
+
+    // Build proper ICU workout payload for create/update
+    if (method !== 'DELETE') {
+      const dateStr = payload.date || new Date().toISOString().split('T')[0]
+      const startDate = `${dateStr}T08:00:00`
+
+      // Build MRC workout_doc from zones / target data if not provided
+      if (!payload.workout_doc) {
+        const durationSec = (payload.duration_min || 60) * 60
+        const name = payload.name || 'AI Generated Workout'
+        const desc = payload.description || ''
+        let mrcIntervals = ''
+        if (payload.zones) {
+          const zone = payload.zones.replace(/^Z/, '')
+          mrcIntervals = `<Intervals Repeat="1" CAD="0" OnPower="0" OnHR="0"><Interval Duration="${durationSec}" PowerLow="${payload.target_power_low || 0}" PowerHigh="${payload.target_power_high || 0}" HR="0" HRHigh="0" cadence="0" cadenceRest="0" Zone="${zone}" Type="FreeRide"/></Intervals>`
+        } else {
+          mrcIntervals = `<Intervals Repeat="1" CAD="0" OnPower="0" OnHR="0"><Interval Duration="${durationSec}" PowerLow="${payload.target_power_low || 0}" PowerHigh="${payload.target_power_high || 0}" HR="${payload.target_hr_low || 0}" HRHigh="${payload.target_hr_high || 0}" cadence="0" cadenceRest="0" Zone="" Type="FreeRide"/></Intervals>`
+        }
+        payload.workout_doc = `<workowork><IntervalsT Type="Ride" Goal="0" IsDamper="0" SportType="bike">${mrcIntervals}</IntervalsT></workowork>`
+      }
+
+      // Ensure required fields exist
+      payload.name = payload.name || '训练课程'
+      payload.description = payload.description || ''
+      payload.type = payload.type || 'Ride'
+      payload.start_date = startDate
+    }
+
+    const icuResp = await fetch(url, {
+      method,
+      headers: icuHeaders,
+      body: method !== 'DELETE' ? JSON.stringify(payload) : undefined,
+    })
+    if (!icuResp.ok) {
+      const errText = await icuResp.text()
+      console.error(`ICU workouts ${method} error (${icuResp.status}):`, errText.substring(0, 500))
+      throw new Error(`Interval.icu API error: ${icuResp.status} - ${errText}`)
+    }
     const icuResult = await icuResp.json()
     await sb.from('workout_edits').update({ status: 'applied' }).eq('workout_id', workout_id).eq('athlete_id', athleteId)
     return json({ success: true, workout_id: icuResult.id || workout_id })

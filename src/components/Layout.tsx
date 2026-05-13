@@ -14,8 +14,8 @@ export function Layout() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full" />
+      <div className="min-h-screen flex items-center justify-center bg-bg">
+        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
       </div>
     )
   }
@@ -23,14 +23,14 @@ export function Layout() {
   if (!isAuthenticated) return null
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-bg flex flex-col text-text">
       {/* Top Bar */}
-      <header className="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-10">
+      <header className="bg-surface border-b border-surface-light px-4 py-3 sticky top-0 z-10">
         <div className="flex items-center justify-between max-w-2xl mx-auto">
-          <h1 className="text-lg font-bold text-gray-900">🚴 骑行AI教练</h1>
+          <h1 className="text-lg font-bold">🚴 骑行AI教练</h1>
           <button
             onClick={logout}
-            className="text-sm text-gray-500 hover:text-red-600 transition-colors"
+            className="text-sm text-text-muted hover:text-accent transition-colors"
           >
             锁定
           </button>
@@ -43,12 +43,12 @@ export function Layout() {
       </main>
 
       {/* Bottom Nav */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 safe-area-bottom">
+      <nav className="fixed bottom-0 left-0 right-0 bg-surface border-t border-surface-light safe-area-bottom">
         <div className="flex justify-around items-center max-w-2xl mx-auto h-16">
           <NavLink
             to="/chat"
             className={({ isActive }) =>
-              `flex flex-col items-center text-xs gap-1 ${isActive ? 'text-blue-600' : 'text-gray-500'}`
+              `flex flex-col items-center text-xs gap-1 ${isActive ? 'text-primary' : 'text-text-muted'}`
             }
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -60,7 +60,7 @@ export function Layout() {
             to="/"
             end
             className={({ isActive }) =>
-              `flex flex-col items-center text-xs gap-1 ${isActive ? 'text-blue-600' : 'text-gray-500'}`
+              `flex flex-col items-center text-xs gap-1 ${isActive ? 'text-primary' : 'text-text-muted'}`
             }
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -71,7 +71,7 @@ export function Layout() {
           <NavLink
             to="/workout"
             className={({ isActive }) =>
-              `flex flex-col items-center text-xs gap-1 ${isActive ? 'text-blue-600' : 'text-gray-500'}`
+              `flex flex-col items-center text-xs gap-1 ${isActive ? 'text-primary' : 'text-text-muted'}`
             }
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
